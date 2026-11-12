@@ -121,7 +121,9 @@ From the identified commit or PR, the monitor extracts:
 
 ---
 
-## Architecture Overview
+## Architecture & How the Loop Connects
+
+The monitor can run in two primary execution modes: as an **Autonomous AI Agent** (Option 1) or as a **Deterministic Python Engine** (Options 2, 3, 4).
 
 ```mermaid
 flowchart TD
@@ -130,35 +132,59 @@ flowchart TD
         OnDemand["On-Demand CLI / Dashboard Trigger"]
     end
 
-    subgraph AgentRuntime["2. AI Agent Reasoning Engine"]
-        Planner["LLM Agent (Pre-Disclosure Monitor)"]
-        Filter["NVD Confirmation Filter (Discards Indexed CVEs)"]
+    subgraph ExecutionModes["2. Execution Engines"]
+        AgentEngine["Mode A: AI Agent (Claude / Cursor / LangGraph)"]
+        PythonEngine["Mode B: Python Orchestrator (monitor.py)"]
     end
 
-    subgraph ThreatIntel["3. Comprehensive Multi-Tier Threat Intel"]
-        Runtimes["Language Runtimes (Node.js, Go, Python, OpenSSL, Apache)"]
-        CloudInfra["Cloud & Hypervisors (Kubernetes SRC, Xen XSA, VMware)"]
-        OSDistros["Linux Distros & OS (oss-security, linux-distros, RedHat, MAPP)"]
-        EdgeGateways["Edge & Gateways (Cisco, F5 QSN, Fortinet, Citrix)"]
-        Databases["Databases (Oracle CPU, PostgreSQL PGDG)"]
-        CVEReserved["CVE Program (RESERVED State & Embargoed PRs)"]
-        WizThreat["Wiz Threat Center (0-Days & Emerging Campaigns)"]
+    subgraph IngestionVerification["3. Ingestion & NVD Filter"]
+        ThreatFeeds["Threat Intelligence Feeds (Cat A, B, C, D)"]
+        NVDFilter["NIST NVD Verification Gate (Discard Published CVEs)"]
     end
 
-    subgraph WizIntegration["4. Cloud Asset Correlation (Wiz MCP / Graph API)"]
-        WizMCP["Wiz MCP Server (discover & execute)"]
-        WizGraph["Wiz Security Graph API (/graphql)"]
-        TenantAssets[("Cloud Workloads (AWS, Azure, GCP, OCI, K8s)")]
+    subgraph CloudCorrelation["4. Cloud Asset Correlation (Wiz Security Graph)"]
+        WizMCP["Wiz MCP Server / GraphQL API"]
+        GraphSearch["Graph Query (HOSTED_TECHNOLOGY)"]
+        WorkloadCheck["Workload Exposure (isAccessibleFromInternet)"]
     end
 
-    TriggerLayer --> AgentRuntime
-    AgentRuntime <--> ThreatIntel
-    AgentRuntime --> Filter
-    Filter --> WizMCP
-    WizMCP <--> WizGraph
-    WizGraph <--> TenantAssets
-    AgentRuntime --> Report["Markdown Table of Discoveries (Internet Exposure Alert)"]
+    TriggerLayer --> ExecutionModes
+    AgentEngine <--> ThreatFeeds
+    PythonEngine <--> ThreatFeeds
+    ThreatFeeds --> NVDFilter
+    NVDFilter --> WizMCP
+    WizMCP --> GraphSearch
+    GraphSearch --> WorkloadCheck
+    WorkloadCheck --> Report["Markdown Table of Discoveries (🚨 Alert)"]
 ```
+
+### Mode A: How the AI Agent Version Works (`mcp_agent_prompt.md`)
+
+```
+1. Global Threat Sweeping ──> Agent scans natural-language vendor notices, mailing lists & Wiz Threat Center
+2. Semantic Extraction    ──> Agent extracts technology names & impacted version ranges from unstructured text
+3. Cognitive NVD Filter   ──> Agent checks NVD; discards confirmed CVEs and retains true pre-disclosures
+4. Dynamic MCP Execution  ──> Agent constructs & executes GraphQL queries via Wiz MCP (HOSTED_TECHNOLOGY)
+5. Workload Triaging      ──> Agent inspects host entities, flags 🚨 TRUE for internet exposure & generates table
+```
+
+* **Cognitive Reasoning**: The agent (in Claude Desktop, Cursor, or LangGraph) reads messy human text, blog posts, and mailing lists natively without relying on rigid regex rules.
+* **Semantic Normalization**: Automatically bridges vendor naming differences (e.g., recognizing `httpd` as `Apache HTTP Server`).
+* **Out-of-Band Security**: The LLM directs the workflow and inspects graph results without ever viewing, possessing, or storing your Wiz API credentials (authentication is handled privately by the local MCP server).
+
+### Mode B: How the Python Version Works (`monitor.py`)
+
+```
+1. Wiz Tenant Inventory  ──> Identifies running technologies in your cloud (e.g., Node.js, Apache)
+2. Ecosystem Mapping    ──> Resolves canonical upstream repos and security branches (ecosystems.json)
+3. GitHub & Feed APIs   ──> Checks staging branches, RSS/Atom feeds, and Wiz Threat Center
+4. NVD Verification     ──> Queries NIST NVD REST API to ensure CVE is unconfirmed/unindexed
+5. Wiz Graph Query      ──> Queries Wiz GraphQL and verifies if workloads are Internet-Exposed
+```
+
+* **Deterministic & Cost-Free**: Runs entirely via Python standard libraries and GraphQL without incurring AI model token fees.
+* **Asset-Driven Targeting**: Focuses monitoring exclusively on the specific software technologies detected in your cloud tenant.
+* **Headless Automation**: Designed for unattended cron jobs, lightweight Docker containers, or scheduled GitHub Actions workflows.
 
 ---
 
