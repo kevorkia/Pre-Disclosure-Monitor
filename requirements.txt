@@ -1,0 +1,6 @@
+# Pre-Disclosure Cloud Threat Monitor — Initial Release
+# Package dependencies
+
+requests>=2.28.0
+tabulate>=0.9.0
+python-dateutil>=2.8.2

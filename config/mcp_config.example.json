@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "wiz": {
+      "command": "npx",
+      "args": ["-y", "@wiz-sec/mcp-server"],
+      "env": {
+        "WIZ_CLIENT_ID": "<your-wiz-client-id>",
+        "WIZ_CLIENT_SECRET": "<your-wiz-client-secret>",
+        "WIZ_AUTH_URL": "<your-wiz-auth-url>",
+        "WIZ_API_URL": "<your-wiz-api-url>"
+      }
+    }
+  }
+}

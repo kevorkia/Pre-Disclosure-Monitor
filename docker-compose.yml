@@ -1,0 +1,12 @@
+# Pre-Disclosure Cloud Threat Monitor — Initial Release
+# Docker Compose service definition
+
+services:
+  pre-disclosure-monitor:
+    build: .
+    environment:
+      - WIZ_CLIENT_ID=${WIZ_CLIENT_ID}
+      - WIZ_CLIENT_SECRET=${WIZ_CLIENT_SECRET}
+      - WIZ_AUTH_URL=${WIZ_AUTH_URL}
+      - WIZ_API_URL=${WIZ_API_URL}
+    restart: "no"

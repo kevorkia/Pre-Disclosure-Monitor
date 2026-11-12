@@ -1,0 +1,39 @@
+# Pre-Disclosure Cloud Threat Monitor — Initial Release
+# Scheduled GitHub Actions automation workflow
+
+name: Pre-Disclosure Threat Intel & Tenant Exposure Monitor
+
+on:
+  schedule:
+    # Run twice daily at 00:00 and 12:00 UTC
+    - cron: '0 0,12 * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    name: Run Pre-Disclosure Tenant Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute Pre-Disclosure Correlation
+        env:
+          WIZ_CLIENT_ID: ${{ secrets.WIZ_CLIENT_ID }}
+          WIZ_CLIENT_SECRET: ${{ secrets.WIZ_CLIENT_SECRET }}
+          WIZ_AUTH_URL: ${{ secrets.WIZ_AUTH_URL }}
+          WIZ_API_URL: ${{ secrets.WIZ_API_URL }}
+        run: |
+          python monitor.py
