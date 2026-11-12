@@ -22,6 +22,8 @@ An autonomous, multi-platform AI agent and monitoring toolkit that sweeps global
     - CVE.org and MITRE records where CVE IDs are assigned and under active coordinated vulnerability disclosure but unindexed on NVD.
   - **Category C (Staged Open-Source Fixes & Embargoed PRs)**:
     - Staged security commits, release branches, and pull requests awaiting coordinated embargo expiration.
+    - *48 to 72 Hour Lead Time*: Attackers often reverse-engineer open-source git commits as soon as they hit public branches to build proof-of-concept exploits before downstream vendors release packages or NVD indexes the CVE.
+    - *Proactive Exposure Mitigation*: Cloud and security engineering teams can apply compensatory controls (WAF rules, network security group restrictions, disabling affected modules) before the exploit is weaponized in the wild.
   - **Category D (Emerging 0-Days & Wiz Threat Research)**:
     - Real-time threat advisories and active campaign monitoring from Wiz Threat Center.
 * **Zero-Credential Security**:
@@ -47,77 +49,6 @@ An autonomous, multi-platform AI agent and monitoring toolkit that sweeps global
 | **Hardware / Firmware** | Intel IPSRT, AMD PSIRT | Multi-week coordinated microarchitectural side-channel embargoes with cloud hypervisors. |
 | **Vulnerability Registries** | CVE.org, MITRE, GitHub Security Advisories (GHSA) | `** RESERVED **` CVE state tracking, coordinated disclosure drafts. |
 | **Threat Research Centers** | Wiz Threat Center | Live 0-day exploitation tracking, emerging cloud threat advisories (`list_threat_advisory_items`). |
-
----
-
-## Deep Dive: Category C (Staged Open-Source Fixes & Embargoed PRs)
-
-Security patches in open-source projects are frequently committed, reviewed, and staged in public or semi-public repositories **days or weeks before an official CVE is assigned or indexed in NVD**.
-
-### 1. Ingestion Channels & Signal Sources
-
-Open-source projects use standard development workflows for coordinated disclosure:
-
-| Source Type | Characteristics | Ecosystem Examples |
-| :--- | :--- | :--- |
-| **Staged Security Branches** | Dedicated branches where maintainers backport embargoed fixes across supported release lines prior to tagging release tarballs. | PHP pushing to `PHP-8.2-security` / `PHP-8.3-security`; Node.js pushing to `v20.x-staging`. |
-| **Silent Security Commits / PRs** | PRs or commits merged into `main`/`master` describing severe flaws in neutral engineering terms to avoid premature disclosure. | *"Harden boundary checks in multipart boundary parsing"*, *"Prevent integer underflow during slice allocation"*, *"Fix potential heap memory leak in assign_headers()"*. |
-| **GitHub Security Advisories (GHSA) Drafts** | Repositories leveraging GitHub Private Vulnerability Reporting (PVR) or temporary private forks. | Draft GHSA entries where a fix is staged, but the advisory is unreleased. |
-| **Distro Staging & `-proposed` Queues** | Package maintainers building and testing updates in staging repositories before lifting an embargo. | Debian `incoming.debian.org`, Ubuntu `-proposed` security repository, or Red Hat staging build systems (`brew`/`koji`). |
-| **Linux Kernel `stable-queue`** | Greg Kroah-Hartman's `stable-queue` Git tree where patches are posted for review 48–72 hours before being merged into stable kernel releases (`linux-stable`). | Kernel commits referencing `Reported-by: <Security Researcher>` or fixing subtle race conditions. |
-
-### 2. Processing Pipeline for Category C
-
-```mermaid
-flowchart TD
-    A["Staged Git Commits / PRs / Staging Queues"] --> B["1. NLP & Heuristic Classifier (Detect Security Significance)"]
-    B --> C["2. Entity & Version Extractor (Tech Name & Impacted Versions)"]
-    C --> D["3. NVD Verification Gate (Discard if already published)"]
-    D -->|CVE Already in NVD| X["Discard (Standard Post-Disclosure)"]
-    D -->|Unpublished / Pending| E["4. Wiz MCP Graph Query (HOSTED_TECHNOLOGY)"]
-    E --> F["5. Workload Exposure Check (isAccessibleFromInternet == true)"]
-    F --> G["Table of Discoveries (🚨 Internet Exposed Alert)"]
-```
-
-#### Step 1: Security Significance Detection (NLP & Heuristics)
-Not every commit represents a security pre-disclosure. The ingestion engine filters commits against:
-* **Security Lexicon Patterns**: Scans commit logs and PR descriptions for indicators such as `use-after-free`, `heap-buffer-overflow`, `out-of-bounds write`, `null-pointer dereference`, `sanitize`, `integer overflow`, `memory corruption`, or `privilege escalation`.
-* **Researcher & Credit Metadata**: Matches git commit tags such as `Reported-by:`, `Credit:`, `Co-authored-by: <researcher>`, or `Fixes: <confidential-issue-id>`.
-* **Code Diff Heuristics**: Analyzes whether changes modify security-critical paths (authentication logic, TLS handshakes, HTTP/2 frame parsers, memory allocators, input boundary checks).
-
-#### Step 2: Entity & Version Range Extraction
-From the identified commit or PR, the monitor extracts:
-* **Technology Name**: Resolved from repository metadata (e.g., `php/php-src` $\rightarrow$ `PHP`, `apache/httpd` $\rightarrow$ `Apache HTTP Server`, `nodejs/node` $\rightarrow$ `Node.js`).
-* **Impacted Version Range**: Extracted from branch names (e.g., `release/8.2` $\rightarrow$ `8.2.x`), tag boundaries (`git describe --tags`), or version headers (`version.h`, `package.json`, `go.mod`).
-* **Advisory Reference**: Staged commit SHA, PR URL, or internal tracking issue.
-
-#### Step 3: Strict NVD Confirmation Filter
-* The extracted technology and advisory details are checked against the NVD REST API (`nvd.nist.gov`).
-* **Evaluation**:
-  * If a CVE is already assigned, published, and marked as generally available on NVD $\rightarrow$ **Discard** (it is already tracked by traditional vulnerability scanners).
-  * If the commit is staged and **no confirmed CVE exists in NVD** $\rightarrow$ **Retain** as a true Category C pre-disclosure with status **`Pending NVD (Staged Fix / Embargoed PR)`**.
-
-#### Step 4: Wiz Security Graph Correlation & Internet Exposure Check
-1. The monitor invokes Wiz MCP (`execute_graph_query`):
-   ```json
-   {
-     "type": ["HOSTED_TECHNOLOGY"],
-     "where": {
-       "techName": { "EQUALS": "<Extracted_Technology>" },
-       "version": { "STARTS_WITH": "<Impacted_Version_Prefix>" }
-     },
-     "select": true
-   }
-   ```
-2. For all matching host workloads (VMs, Containers, Kubernetes Pods), it checks:
-   * `isAccessibleFromInternet == true`
-   * `isOpenToAllInternet == true`
-   * `DetectionMethodExternalNetworkScan` in detection methods
-3. Any internet-exposed workload running the unpatched, pre-disclosed version is immediately flagged with **`🚨 TRUE`**.
-
-### 3. Defensive Value & Early Lead Time
-* **48 to 72 Hour Lead Time**: Attackers often reverse-engineer open-source git commits as soon as they hit public branches to build proof-of-concept exploits before downstream vendors release packages or NVD indexes the CVE.
-* **Proactive Exposure Mitigation**: Cloud and security engineering teams can apply compensatory controls (WAF rules, network security group restrictions, disabling affected modules) **before** the exploit is weaponized in the wild.
 
 ---
 
